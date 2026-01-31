@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Particle Network</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1a2e 50%, #16213e 100%);
+            cursor: crosshair;
+        }
+
+        #canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .content {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+            color: white;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        h1 {
+            font-size: 4rem;
+            font-weight: 700;
+            background: linear-gradient(45deg, #00f5ff, #ff00ff, #00f5ff);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 3s ease infinite;
+            margin-bottom: 1rem;
+            letter-spacing: 0.1em;
+        }
+
+        p {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 1rem;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+            z-index: 10;
+            pointer-events: none;
+            font-family: 'Courier New', monospace;
+            text-align: right;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 15px;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: rgba(0, 245, 255, 0.1);
+            border: 2px solid rgba(0, 245, 255, 0.5);
+            color: #00f5ff;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        button:hover {
+            background: rgba(0, 245, 255, 0.2);
+            border-color: #00f5ff;
+            box-shadow: 0 0 20px rgba(0, 245, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+            }
+            p {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="content">
+        <h1>COSMIC NETWORK</h1>
+        <p>Move your mouse to interact with the particles</p>
+    </div>
+
+    <div class="stats">
+        <div>Particles: <span id="particleCount">0</span></div>
+        <div>Connections: <span id="connectionCount">0</span></div>
+        <div>FPS: <span id="fps">0</span></div>
+    </div>
+
+    <div class="controls">
+        <button onclick="toggleMode()">Toggle Mode</button>
+        <button onclick="addParticles()">Add Particles</button>
+        <button onclick="reset()">Reset</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let particles = [];
+        let mouse = { x: null, y: null, radius: 150 };
+        let mode = 'attract'; // 'attract' or 'repel'
+        let connectionCount = 0;
+        let fps = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x || Math.random() * width;
+                this.y = y || Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 1;
+                this.color = this.getColor();
+                this.originalVx = this.vx;
+                this.originalVy = this.vy;
+            }
+
+            getColor() {
+                const colors = [
+                    { r: 0, g: 245, b: 255 },    // cyan
+                    { r: 255, g: 0, b: 255 },    // magenta
+                    { r: 138, g: 43, b: 226 },   // blue violet
+                    { r: 0, g: 255, b: 127 },    // spring green
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                // Mouse interaction
+                if (mouse.x != null && mouse.y != null) {
+                    const dx = this.x - mouse.x;
+                    const dy = this.y - mouse.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < mouse.radius) {
+                        const force = (mouse.radius - distance) / mouse.radius;
+                        const angle = Math.atan2(dy, dx);
+
+                        if (mode === 'attract') {
+                            this.vx -= Math.cos(angle) * force * 0.5;
+                            this.vy -= Math.sin(angle) * force * 0.5;
+                        } else {
+                            this.vx += Math.cos(angle) * force * 0.8;
+                            this.vy += Math.sin(angle) * force * 0.8;
+                        }
+                    }
+                }
+
+                // Apply velocity damping
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // Gradually return to original velocity
+                this.vx += (this.originalVx - this.vx) * 0.01;
+                this.vy += (this.originalVy - this.vy) * 0.01;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Bounce off edges
+                if (this.x < 0 || this.x > width) {
+                    this.vx *= -1;
+                    this.originalVx *= -1;
+                    this.x = Math.max(0, Math.min(width, this.x));
+                }
+                if (this.y < 0 || this.y > height) {
+                    this.vy *= -1;
+                    this.originalVy *= -1;
+                    this.y = Math.max(0, Math.min(height, this.y));
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0.8)`;
+                ctx.fill();
+
+                // Glow effect
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0.8)`;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function init() {
+            particles = [];
+            const particleCount = Math.min(150, Math.floor((width * height) / 8000));
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function drawConnections() {
+            connectionCount = 0;
+            const maxDistance = 150;
+
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < maxDistance) {
+                        connectionCount++;
+                        const opacity = (1 - distance / maxDistance) * 0.5;
+
+                        // Mix colors for gradient effect
+                        const color1 = particles[i].color;
+                        const color2 = particles[j].color;
+                        const mixedColor = {
+                            r: (color1.r + color2.r) / 2,
+                            g: (color1.g + color2.g) / 2,
+                            b: (color1.b + color2.b) / 2
+                        };
+
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(${mixedColor.r}, ${mixedColor.g}, ${mixedColor.b}, ${opacity})`;
+                        ctx.lineWidth = 1;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            drawConnections();
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // Calculate FPS
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = Math.round(frameCount * 1000 / (currentTime - lastTime));
+                frameCount = 0;
+                lastTime = currentTime;
+
+                document.getElementById('fps').textContent = fps;
+                document.getElementById('particleCount').textContent = particles.length;
+                document.getElementById('connectionCount').textContent = connectionCount;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function toggleMode() {
+            mode = mode === 'attract' ? 'repel' : 'attract';
+        }
+
+        function addParticles() {
+            for (let i = 0; i < 20; i++) {
+                particles.push(new Particle(
+                    mouse.x || width / 2,
+                    mouse.y || height / 2
+                ));
+            }
+        }
+
+        function reset() {
+            init();
+        }
+
+        // Event listeners
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            init();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.x;
+            mouse.y = e.y;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            for (let i = 0; i < 5; i++) {
+                particles.push(new Particle(e.x, e.y));
+            }
+        });
+
+        // Keyboard controls
+        window.addEventListener('keydown', (e) => {
+            if (e.key === ' ') {
+                toggleMode();
+            } else if (e.key === 'a' || e.key === 'A') {
+                addParticles();
+            } else if (e.key === 'r' || e.key === 'R') {
+                reset();
+            }
+        });
+
+        // Initialize and start
+        init();
+        animate();
+    </script>
+</body>
+</html>
